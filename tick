@@ -1,0 +1,45 @@
+
+
+$ docker network create influxdb
+
+Next, we'll start our InfluxDB container named influxdb:
+
+$ docker run --rm influxdb:latest influxd config > influxdb.conf
+
+$ docker run -d --name influxdb \
+  --net=influxdb \
+  -p 8086:8086 \
+  -v $PWD/influxdb:/var/lib/influxdb \
+  -v $PWD/influxdb.conf:/etc/influxdb/influxdb.conf:ro \
+  influxdb
+
+
+We can now start a Chronograf container that references this database.
+
+$ docker run -d --name=chronograf -p 8888:8888 \
+      --net=influxdb \
+      chronograf --influxdb-url=http://influxdb:8086
+
+## Telegraf - Statsd (Graphite metrics)
+
+$ docker run --rm telegraf telegraf config > telegraf.conf
+
+$ sed -i 's|\# \[\[inputs.statsd\]\]| \[\[inputs.statsd\]\]|g' telegraf.conf
+$ sed -i 's|# urls = \["http://127.0.0.1:8086"\]| urls = \["http://influxdb:8086"\]|g' telegraf.conf
+
+$ docker run -d --name=collector-telegraf-statsd \
+      --net=influxdb \
+      -p 8125:8125/udp \
+      -v $PWD/telegraf.conf:/etc/telegraf/telegraf.conf:ro \
+      telegraf
+
+Send Mock StatsD data:
+
+$ for i in {1..50}; do echo $i;echo "foo:1|c" | nc -u -w0 127.0.0.1 8125; done
+
+
+docker run --name grafana \
+  -p 3000:3000 \
+  -v $PWD/grafana:/var/lib/grafana \
+  --link influxdb \
+  grafana/grafana:latest
